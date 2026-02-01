@@ -1,0 +1,1002 @@
+var focus = null;
+
+function getCategorie(id) {
+    var cat = {};
+    for (var i = 0; i < categories.length; i++) {
+        if (categories[i].id == id) {
+            cat = categories[i];
+        }
+    }
+    return cat;
+}
+
+function getCategorieLabel(cat) {
+    if (cat.logo != '')
+        return ' <span class="label label-default" style="background-color: ' + cat.color + '"><span class="' + cat.logo + ' logo">&nbsp;</span> ' + cat.name + '</span>'
+    else
+        return ' <span class="label label-default" style="background-color: ' + cat.color + '"><span class="logo"></span> ' + cat.name + '</span>'
+}
+
+function refreshCal() {
+    if ($('#year').is(":visible"))
+        getYear();
+    else
+        $('#calender').fullCalendar("refetchEvents");
+}
+
+function closeAllModals() {
+    if (($(".modal").data('bs.modal') || {}).isShown) { //If a modal is shown
+        var modal = $(".modal.in"); // Get the current element
+        $(modal).modal('hide'); // Hide the current modal
+    }
+}
+
+function eventShowDetail(id) {
+    data = {f: 'getEvent', id: id, u: $('#ansichten').data('selected')};
+    if ($('#calender').attr('data-publicview') == true) {
+        data.ki = $('#calender').attr('data-institution');
+        data.kkey = $('#calender').attr('data-key');
+    }
+
+    $.post('kalender.php', data)
+            .done(function (data) {
+                var ev = JSON.parse(data);
+                var message = '';
+
+                if (ev.id == '') {
+                    bootbox.alert('Zu diesem Eintrag sind keine weiteren Informationen verfügbar!');
+                    return;
+                }
+
+                var start = moment(ev.start.date);
+                var end = moment(ev.end.date);
+                if (ev.allDay == true) {
+                    if (start.format('DD.MM.YY') == end.format('DD.MM.YY'))
+                        message += '<i class="fa fa-clock-o"></i> <b>' + start.format('DD.MM.YY') + '</b>';
+                    else
+                        message += '<i class="fa fa-clock-o"></i> <b>' + start.format('DD.MM.YY') + ' bis ' + end.subtract(1, 'seconds').format('DD.MM.YY') + '</b>';
+                } else {
+                    if (start.format('DD.MM.YY') == end.format('DD.MM.YY')) {
+                        message += '<i class="fa fa-clock-o"></i> <b>' + start.format('DD.MM.YY') + '</b>';
+                        message += '<b> von ' + start.format('HH:mm') + '</b> bis ' + end.format('HH:mm') + ' Uhr';
+                    } else {
+                        message += '<i class="fa fa-calendar"></i> von ' + start.format('DD.MM.YY') + ' um ' + start.format('HH:mm') + ' Uhr <br /><i class="fa fa-calendar"></i> bis ' + end.format('DD.MM.YY') + ' um ' + end.format('HH:mm') + ' Uhr';
+                    }
+                }
+
+                message += '<br /><br />';
+
+                if (ev.properties.verantwortlich) {
+                    cat = getCategorie(ev.category)
+                    message += '<span class="label label-warning"><i class="fa fa-user"></i>&nbsp;Verantwortlich: ' + ev.properties.verantwortlich + '</span><br /><br />';
+                }
+
+                if (ev.properties['_Tool']) {
+                    message += '<span class="label label-warning">' + ev.properties['_Tool'] + '</span><br /><br />';
+                }
+
+                message += ev.description || ev.description == " " ? ev.description : '<i>Keine Beschreibung hinterlegt</i>';
+
+                if(typeof ev.properties.substituteEntryLink !== 'undefined'){
+                    message += " " + ev.properties.substituteEntryLink;
+                }
+
+                message += '<br /><br />';
+
+                if (ev.properties.ort != '' && ev.properties.ort != null && ev.properties.ort != "null")
+                    message += '<i class="fa fa-map-marker"></i> Ort: ' + ev.properties.ort + '<br /><br />';
+
+                if (ev.properties.zielgruppen && Object.keys(ev.properties.zielgruppen).length > 0) {
+                    message += '<div class="well well-sm"><i class="fa fa-users"></i>&nbsp;Zielgruppen:<ul>';
+                    var first = true;
+                    $.each(ev.properties.zielgruppen, function (key, value) {
+                        message += '<li>' + value + '</li>';
+                        first = false;
+                    });
+                    message += '</ul></div>';
+                }
+
+                if (typeof ev.properties.created !== "undefined") {
+                    message += ' <span class="label label-success">Erstellt am ' + ev.properties.created + '</span>';
+                }
+
+                var buttons = {
+                    success: {
+                        label: "OK",
+                        className: "btn-success",
+                        callback: function () {
+                        }
+                    }
+                };
+
+                if (ev.properties['_Toolurls']) {
+                     var buttons = {};
+                    var i =1;
+                    for(var prop in ev.properties['_Toolurls']) {
+                        var href = ev.properties['_Toolurls'][prop];
+                            buttons['key' + i] = {
+                                label: prop,
+                                className: "btn-info",
+                                callback: function () {
+                                    document.location.href = href;
+
+                                }
+                            };
+                            i++;                        
+                    }  
+                    buttons.success = {
+                        label: "OK",
+                        className: "btn-success",
+                        callback: function () {
+                        }
+                    };                    
+                }
+                else if (ev.editable == true) {
+                    var buttons = {
+                        success: {
+                            label: "OK",
+                            className: "btn-success",
+                            callback: function () {
+                            }
+                        },
+                        danger: {
+                            label: "Löschen",
+                            className: "btn-danger",
+                            callback: function () {
+                                bootbox.confirm("Soll dieser Termin wirklich gelöscht werden?", function (result) {
+                                    if (result) {
+                                        $.post('kalender.php', {f: 'delEvent', id: ev.id})
+                                                .done(function (data) {
+                                                    if (data == 1) {
+                                                        $('#calender').fullCalendar("refetchEvents");
+                                                    } else
+                                                        bootbox.alert('Der Termin konnte leider nicht gelöscht werden!');
+
+                                                });
+                                    }
+                                });
+
+                            }
+                        },
+                        copy: {
+                            label: "Duplizieren",
+                            className: "btn-info",
+                            callback: function () {
+                                $('.bootbox button[data-bb-handler="edit"]').click();
+                                var bb = $('#neu');
+                                bb.find("#id").val('');
+                                bb.find("legend").html("Neuer Eintrag");
+                            }
+                        },
+                        edit: {
+                            label: "Bearbeiten",
+                            className: "btn-primary",
+                            callback: function () {
+                                $('#calendarrow, #year').hide();
+                                var bb = $('#neu');
+
+                                bb.find('#optsbtn, #opts, #privat').hide();
+                                bb.find("#id").val(ev.id);
+                                bb.find('#code').val(ev.properties.code);
+                                bb.find('#titel').val($('<textarea />').html(ev.title).text()).focus();
+                                bb.find('#art').val(ev.category);
+                                $('#ganztag').prop('checked', ev.allDay).change();
+
+                                var end = moment(ev.end.date);
+                                if (ev.allDay) {
+                                    end.subtract(1, 'seconds');
+                                }
+
+                                datevonSet(moment(ev.start.date).format('DD.MM.YYYY'));
+                                bb.find('#vont').val(moment(ev.start.date).format('HH:mm'));
+                                datebisSet(end.format('DD.MM.YYYY'));
+                                bb.find('#bist').val(end.format('HH:mm'));
+                                bb.find('#beschreibung').val($('<textarea />').html(ev.description).text());
+                                if (ev.hasOwnProperty('descriptionOrg'))
+                                    bb.find('#beschreibung').val($('<textarea />').html(ev.descriptionOrg).text());
+                                bb.find('#ort').val($('<textarea />').html(ev.properties.ort).text());
+                                bb.find('#verantwortlich').val(ev.properties.verantwortlich);
+                                bb.find("legend").html("Eintrag bearbeiten");
+
+                                bb.show();
+                                $('#titel').focus();
+                                
+
+                                //Verantwortlich
+                                $('#neu').find('#verantwortlich option').each(function (i, opt) {
+                                    if (ev.properties.verantwortlich == $(opt).text().trim()) {
+                                        $('#neu #verantwortlich').val($(opt).attr('value'))
+                                                .change()
+                                                .trigger('chosen:updated');
+                                    }
+                                });
+
+                                if ($('#zielgruppeNeu').hasClass("select2-hidden-accessible")) {
+                                    $('#zielgruppeNeu').select2('destroy');
+                                }
+
+                                $("#zielgruppeNeu").select2({
+                                    language: "de",
+                                    ajax: {
+                                        url: "kalender.php",
+                                        dataType: 'json',
+                                        delay: 500,
+                                        data: function (params) {
+                                            return {
+                                                q: params.term, // search term
+                                                page: params.page || 1,
+                                                a: "searchRecipt"
+                                            };
+                                        },
+                                        processResults: function (data, params) {
+                                            params.page = params.page || 1;
+
+                                            return {
+                                                results: data.items,
+                                                pagination: {
+                                                    more: (params.page * 30) < data.total_count
+                                                }
+                                            };
+                                        },
+                                        cache: true
+                                    },
+                                    escapeMarkup: function (markup) {
+                                        return markup;
+                                    }, // let our custom formatter work
+                                    minimumInputLength: 0,
+                                    templateSelection: function (item) {
+                                        return item.element.title;
+                                    }
+
+                                });
+
+                                //Zielgruppen                                
+                                $('#zielgruppeNeu option').remove();
+                                $('#zielgruppeNeu').val('').trigger('change');
+                                var zielvalues = [];
+                                zielgruppen = ev.properties.zielgruppen;
+                                $.each(zielgruppen, function (key, value) {
+                                    var newOption = new Option(value.replace(/&amp;/g, '&'), key, true, true);
+                                    newOption.title = value.replace(/&amp;/g, '&');
+                                    $('#zielgruppeNeu').append(newOption);
+                                });
+                                $('#zielgruppeNeu').trigger('change');
+                                  bb.find('#titel').focus();
+                            }
+                        }
+                    };
+                }
+
+                closeAllModals();
+                bootbox.dialog({
+                    message: message,
+                    title: ev.title + getCategorieLabel(getCategorie(ev.category)),
+                    buttons: buttons
+                });
+            });
+}
+
+function getYear(year) {
+    if (typeof year == "undefined") {
+        if($('.lastSchoolyear:visible').length==1)
+            year = 1;
+        else
+            year = 0;
+    }
+    data = {f: 'getEvents', year: year, start: 'year', k: $('#kategorie').val(), s: $('#search').val(), z: $('#zielgruppe').val(), u: $('#ansichten').data('selected')};
+    if ($('#calender').attr('data-publicview') == true) {
+        data.ki = $('#calender').attr('data-institution');
+        data.kkey = $('#calender').attr('data-key');
+    }
+
+    $('#year').hide();
+
+    $('.nextSchoolyear').css('cursor', 'pointer').click(
+            function () {
+                $('#calender .fc-toolbar h2')
+                        .html('<span class="fa fa-arrow-left lastSchoolyear"></span> Nächstes Schuljahr');
+                getYear(1);
+            }
+
+    );
+
+    $('.lastSchoolyear').css('cursor', 'pointer').click(
+            function () {
+                $('#calender .fc-toolbar h2')
+                        .html('Aktuelles Schuljahr <span class="fa fa-arrow-right nextSchoolyear"></span>');
+                getYear(0);
+            }
+
+    );
+
+    $.post('kalender.php', data)
+            .done(function (data) {
+                data = JSON.parse(data);
+
+                writeYear(data, "year");
+                $('#year').show();
+            });
+
+}
+
+function newEvents() {
+
+    $.post('kalender.php', {f: 'getEvents', start: 'year', neu: true, k: $('#kategorie').val(), s: $('#search').val(), u: $('#ansichten').data('selected')})
+            .done(function (data) {
+                data = JSON.parse(data);
+
+                writeYear(data, "newEvents");
+            });
+
+}
+
+function writeYear(data, id) {
+    var html = '';
+    var m = -1;
+    var firstMonth = true;
+
+
+    if (data.length == 0)
+        html = '<div class="alert alert-info">Für diese Auswahl sind keine Termine hinterlegt!</div>';
+    else {
+
+        for (var i = 0; i < data.length; i++) {
+            var e = data[i];
+            e.mo = moment(e.start);
+            e.endmo = moment(e.end);
+            if (e.allDay)
+                e.endmo.subtract(1, 'seconds');
+            var cat = getCategorie(e.category);
+
+            if (m != e.mo.format('M')) {
+                m = e.mo.format('M');
+
+                if (!firstMonth)
+                    html += '</tbody></table></div>';
+                else
+                    firstMonth = false;
+
+                html += '<div class="panel panel-default"><div class="panel-heading">' + e.mo.format('MMMM YYYY') + '</div>';
+                html += '<table class="table table-striped table-hover"><thead><tr><th style="width: 100px;">Datum</th><th style="width: 50px;">Uhrzeit</th><th>Termin</th></tr></thead><tbody>';
+            }
+
+            html += '<tr onclick="eventShowDetail(' + e.Id + ');">';
+            html += '<td>' + e.mo.format('ddd') + ' ' + e.mo.format('DD.MM.') + (e.mo.format('DD.MM.YYYY') != e.endmo.format('DD.MM.YYYY') ? '-<br />' + e.endmo.format('ddd') + ' ' + e.endmo.format('DD.MM.') : '') + '</td>';
+            html += '<td>' + (e.allDay ? 'ganztägig' : e.mo.format('HH:mm') + ' - ' + e.endmo.format('HH:mm')) + '</td>';
+            html += '<td>';
+            if (e.Neu == "ja")
+                html += '<span class="label label-danger">Neu</span> ';
+            html += e.title + getCategorieLabel(cat) + (e.description != "" ? '<br /><small>' + e.description + '</small>' : '') + '</td>';
+            html += '</tr>';
+        }
+        html += '</tbody></table></div>';
+    }
+
+    $('#' + id).html(html);
+
+}
+
+function iCalAbo() {
+    $.post("kalender.php", {f: "iCalAbo", u: $('#ansichten').data('selected')})
+            .done(function (data) {
+                if (data != -1) {
+                    bootbox.alert("Mit Hilfe des folgenden Links kann man ein iCal-Abonnement der Termine in Kalendersoftware vornehmen, die diese Funktion unterstüzt. Dieser Link kann von jeder Person genutzt werden - er ist daher entsprechend geheim zu halten. Die Aktualisierung von Terminen per iCal-Abonnements kann bis zu 24 Stunden (je nach Software) dauern.<br /><br />Der Link lautet: <input id='abolink' type='text' class='form-control' value='" + data + "' /><small>Um den Link zu kopieren, diesen zuerst anklicken und dann per Rechtsklick <i>Kopieren</i> auswählen!</small>");
+                    $("#abolink").on("click", function () {
+                        $(this).select();
+                    });
+                } else
+                    bootbox.alert("Leider ist ein Fehler aufgetreten. Bitte später erneut versuchen!");
+            });
+}
+
+$(document).ready(function () {
+
+    if (parseInt($('#calender').attr('data-neuetermine')) > 0) {
+        header = {
+            left: 'prev,next today',
+            center: 'title',
+            right: 'yearButton,month,basicWeek,newEventsButton'
+        };
+    } else {
+        header = {
+            left: 'prev,next today',
+            center: 'title',
+            right: 'yearButton,month,basicWeek'
+        };
+    }
+
+    $('#calender').fullCalendar({
+        lang: 'de',
+        timeFormat: 'H:mm',
+        customButtons: {
+            yearButton: {
+                text: 'Schuljahr',
+                click: function () {
+                    $('#calender .fc-view-container').hide();
+                    $('#calender .fc-toolbar h2').data('oldtitle', $('#calender .fc-toolbar h2').html())
+                            .html('Aktuelles Schuljahr <span class="fa fa-arrow-right nextSchoolyear"></span>');
+                    $('#calender .fc-left button').hide();
+                    $('#newEvents').hide();
+
+                    getYear();
+                    $.localStorage.set('view', 'year');
+                }
+            },
+            newEventsButton: {
+                text: 'Neu',
+                click: function () {
+                    $('#calender .fc-view-container').hide();
+                    $('#calender .fc-toolbar h2').data('oldtitle', $('#calender .fc-toolbar h2').html())
+                            .html('Neue Termine');
+                    $('#calender .fc-left button').hide();
+
+                    $('#year').hide();
+
+                    newEvents();
+                    $.localStorage.set('view', 'new');
+                    $('#newEvents').show();
+                }
+            }
+        },
+        header: header,
+        weekNumbers: true,
+        firstDay: 1,
+        eventRender: function (ev, obj) {
+            ev.id = ev.Id;
+            var cat = getCategorie(ev.category);
+
+
+            if (cat.color) {
+                obj.css('background-color', cat.color);
+            }
+            obj.attr('id', 'event' + ev.Id);
+
+            obj.attr('title', ev.title);
+
+            if (ev.allDay == true)
+                var add = '';
+            else
+                var add = '<span class="logobr"></span>';
+
+            if (cat.logo) {
+                obj.find('div.fc-content span.fc-title').prepend('<i class="' + cat.logo + ' logo"></i>' + add + ' ');
+            } else if (add != '')
+                obj.find('div.fc-content span.fc-title').prepend(add);
+
+            if (ev.Neu == "ja")
+                obj.find('div:first').prepend('<span class="label label-danger">Neu</span>');
+
+            if ($('.fc-basicWeek-button').hasClass('fc-state-active')) {
+                if (ev.allDay == false) {
+                    if (ev._start.format('YMD') == ev._end.format('YMD')) {
+                        obj.find('.fc-time').append(' - ' + ev._end.format('H:mm'));
+                    }
+                }
+            }
+
+            obj.click(function () {
+                eventShowDetail(ev.id);
+            });
+        },
+        selectable: true,
+        selectHelper: true,
+        select: function (start, end) {
+            if ($('#calender').attr('data-canwrite') == false || $('#calender').attr('data-canwrite') == "false") {
+                return;
+            }
+
+
+            $('#calendarrow').hide();
+            newFormShow(start, end);
+
+            $('#calender').fullCalendar('unselect');
+        },
+        editable: false,
+        events: {
+            url: 'kalender.php',
+            type: 'POST',
+            data: function () { // a function that returns an object
+                var back = {
+                    f: 'getEvents',
+                    k: $('#kategorie').val(),
+                    s: $('#search').val(),
+                    z: $('#zielgruppe').val(),
+                    u: $('#ansichten').data('selected')
+                };
+                if ($('#calender').attr('data-publicview') == true) {
+                    back.ki = $('#calender').attr('data-institution');
+                    back.kkey = $('#calender').attr('data-key');
+                }
+                return back;
+            },
+            error: function () {
+                alert('Leider konnten die Termine nicht geladen werden!');
+            }
+
+        }
+
+
+    });
+
+    //Year-Button
+    var bgroup = $('#calender .fc-toolbar .fc-right .fc-button-group');
+    if (parseInt($('#calender').attr('data-neuetermine')) > 0) {
+        bgroup.find('button:last').html('<span class="label label-danger">Neue Termine</span>');
+    }
+
+    bgroup.find('button').click(function () {
+        $(this).parent().find('.fc-state-active').removeClass('fc-state-active');
+        $(this).addClass('fc-state-active');
+
+        if ($(this).hasClass('fc-yearButton-button'))
+            return;
+        if ($(this).hasClass('fc-newEventsButton-button'))
+            return;
+
+        var active = $(this).parent().find('.fc-yearbutton-button, .fc-neweventsbutton-button').removeClass('fc-state-active');
+        $('#calender .fc-left').show();
+        $('#calender .fc-view-container').show();
+        $('#year, #newEvents').hide();
+
+        if ($(this).hasClass('fc-basicWeek-button'))
+            $.localStorage.set('view', 'week');
+        else if ($(this).hasClass('fc-month-button'))
+            $.localStorage.set('view', 'month');
+
+        $('#calender .fc-left button').show();
+
+        $('#calender').fullCalendar('render');
+
+        if ($('#calender .fc-toolbar h2').data('oldtitle') != '')
+            $('#calender .fc-toolbar h2').html($('#calender .fc-toolbar h2').data('oldtitle'));
+        $('#calender .fc-toolbar h2').data('oldtitle', '');
+
+        refreshCal();
+    });
+
+
+
+    //Zielgruppen-Filter
+    if ($('#calender').attr('data-isadmin') == true) {
+        arthtml = '<br /><form class="filter form-inline hidden-xs"><div class="input-group"><div class="input-group-addon"><span class="fa fa-users"></span></div><select size="1" id="zielgruppe" class="form-control" title="Zielgruppe einschränken"><option value="">Alle</option></select></div></form>';
+        if ($(".ansichtenmenue").length > 0)
+            $('.ansichtenmenue').prepend(arthtml);
+        else
+            $('#calender .fc-left').append(arthtml);
+
+        $('#zielgruppe').append('<option value="-sus">alle Lernenden</option>');
+        $('#zielgruppe').append('<option value="-lul">alle Lehrkräfte</option>');
+        $('#zielgruppe').append('<option value="-public">öffentlich</option>');
+
+        if (typeof groups !== "undefined" && groups.length > 0) {
+            for (var i = 0; i < groups.length; i++) {
+                $('#zielgruppe').append('<option value="-g-' + groups[i].id + '">' + groups[i].name + '</option>');
+            }
+        }
+        $('#zielgruppe').change(function () {
+            refreshCal();
+        });
+    }
+
+    //Art-Filter
+    arthtml = '<br /><form class="filter form-inline hidden-xs"><div class="input-group"><div class="input-group-addon"><span class="fa fa-filter"></span></div><select size="1" id="kategorie" class="form-control" title="Terminart einschränken"><option value="">Alle</option></select></div></form>';
+    if ($(".ansichtenmenue").length > 0)
+        $('.ansichtenmenue').prepend(arthtml);
+    else
+        $('#calender .fc-left').append(arthtml);
+
+    for (var i = 0; i < categories.length; i++) {
+        $('#kategorie').append('<option value="' + categories[i].id + '">' + categories[i].name + '</option>');
+    }
+    $('#kategorie').change(function () {
+        refreshCal();
+    });
+
+    //Suche
+    searchhtml = '<form class="suche form-inline hidden-xs"><div class="input-group"><div class="input-group-addon"><span class="fa fa-search"></span></div><input type="text" class="form-control" id="search" placeholder="Titel/Ort/Beschreibung"></div></form>';
+    if ($(".ansichtenmenue").length > 0)
+        $('.ansichtenmenue').prepend("<b class='hidden-xs'>Filter</b>" + searchhtml);
+    else
+        $('#calender .fc-right').prepend(searchhtml);
+
+    $('#search').change(function () {
+        refreshCal();
+    });
+    $('#search').on("keydown", function (event) {
+        if (event.which == 13) {
+            event.preventDefault();
+            $('#search').change();
+            return false;
+        }
+    });
+
+    $.getScript('js/jquery.storageapi.min.js', function () {
+        $.getScript('js/jquery.cookie.js', function () {
+            if (startView == 'year' || (startView == 'none' && $.localStorage.get('view') == 'year'))
+                $('#calender .fc-toolbar .fc-right .fc-button-group .fc-yearButton-button').click();
+            else if (startView == 'week' || (startView == 'none' && $.localStorage.get('view') == 'week'))
+                $('#calender .fc-toolbar .fc-right .fc-button-group .fc-basicWeek-button').click();
+        });
+    });
+
+    startNewForm();
+
+    startShare();
+
+    $('#ansichten').data('selected', $('#calender').attr('data-firstid'));
+
+    $('#exportgroup').width('100%').find('a').each(function () {
+        $(this).data('href', $(this).attr('href'));
+    });
+
+    $('#ansichten td').click(function () {
+        var name = $(this).text();
+        var id = $(this).attr('data-id');
+
+        $('#ansichten').data('selected', id);
+        $('#ansichten td.success').removeClass('success');
+        $(this).addClass('success');
+
+        var td = $(this);
+
+        var row = parseInt(td.attr('data-id'));
+        var own = parseInt(td.attr('data-own'));
+
+        if (row == 0) {
+            $('#exporttitle').html('<i class="fa fa-external-link" aria-hidden="true"></i> Adminkalender');
+            $('#exportgroup a').each(function (i, a) {
+                $(a).attr('href', $(a).data('href') + '&admin=1');
+            });
+            $('#exportgroup li.admin').show();
+            $('#exportgroup .icalhide').hide();
+            $('#exportgroup .ical').show();
+        } else if (own == 1) {
+            $('#exportgroup .icalhide, #exportgroup .ical').show();
+            $('#exporttitle').html('<i class="fa fa-external-link" aria-hidden="true"></i> Eigener Kalender');
+            $('#exportgroup a').each(function (i, a) {
+                $(a).attr('href', $(a).data('href'));
+            });
+            $('#exportgroup li.admin').hide();
+
+        } else {
+
+            $('#exporttitle').html('<i class="fa fa-external-link" aria-hidden="true"></i> ' + name + '');
+            $('#exportgroup a').each(function (i, a) {
+                $(a).attr('href', $(a).data('href') + '&user=' + id);
+            });
+            $('#exportgroup li.admin').hide();
+            $('#exportgroup .ical').hide();
+        }
+
+        refreshCal();
+    });
+
+
+    //View
+    if (typeof URL != "undefined") {
+        var url = new URL(location.href);
+        var editId = url.searchParams.get("edit");
+        if (editId > 0) {
+            eventShowDetail(editId);
+        }
+    }
+
+});
+
+function startShare() {
+    $('#calShare').click(function () {
+        $.post('kalender.php', {f: 'getZCode'})
+                .done(function (data) {
+                    bootbox.alert('Der eigene Kalender kann für andere Nutzende derselben Schule zum Lesen freigeben werden (Schreibrechte lassen sich über die Kalendereinstellungen sowie die "manuellen Zielgruppen" durch einen Tooladmin verteilen). Jeder Person, der der eigene Kalender freigeben werden soll, benötigt einen eigenen Zugriffscode (per E-Mail, Telefon etc.). Der aktuell generierte Zugriffscode lautet: <div role="alert" class="alert alert-warning"><i class="fa fa-key"></i> <b>' + data + '</b></div>Dieser kann nur von einer Person benutzt werden und verfällt nach fünf Tagen.');
+                });
+    });
+
+    $('#calAdd').click(function () {
+        bootbox.prompt("Bitte den Zugriffscode für einen Kalender einer anderen Person im Schulportal eingeben:", function (result) {
+            if (result !== null) {
+                $.post('kalender.php', {f: 'addZCode', c: result})
+                        .done(function (data) {
+                            if (data == 1) {
+                                bootbox.alert('Der Kalender wurde erfolgreich hinzugefügt. Es kann lesend auf diesen zugegriffen werden!', function () {
+                                    document.location.reload(true);
+                                });
+                            } else if (data == '-2') {
+                                bootbox.alert('Der eigene Kalender kann nicht hinzugefügt werden!');
+                            } else
+                                bootbox.alert('Der Zugriffscode ist entweder schon benutzt, zu alt oder ungültig und kann daher nicht benutzt werden!');
+                        });
+            }
+        });
+
+
+    });
+
+    $('#calDel').click(function () {
+        $.post('kalender.php', {f: 'getZCals'})
+                .done(function (data) {
+                    d = jQuery.parseJSON(data);
+
+                    html = '<div class="calZ"><h2>Kalenderfreigaben</h2><h3>Freigaben des eigenen Kalenders</h3>';
+                    if (d.Eigene.length == 0) {
+                        html += '<i>Keine Freigaben vom eigenen Kalendern gefunden!</i>';
+                    } else {
+                        html += '<ul>';
+                        for (var i = 0; i < d.Eigene.length; i++)
+                            html += '<li data-key="' + d.Eigene[i].key + '">' + d.Eigene[i].user + ' <button class="btn btn-primary btn-sm"><i class="fa fa-trash-o" aria-hidden="true"></i></button></li>';
+                        html += '</ul>';
+                    }
+
+                    html += '<h3>Freigaben von fremden Kalendern</h3>';
+                    if (d.Fremde.length == 0) {
+                        html += '<i>Keine Freigaben von fremden Kalendern gefunden!</i>';
+                    } else {
+                        html += '<ul>';
+                        for (var i = 0; i < d.Fremde.length; i++)
+                            html += '<li data-key="' + d.Fremde[i].key + '">' + d.Fremde[i].user + ' <button class="btn btn-primary btn-sm"><i class="fa fa-trash-o" aria-hidden="true"></i></button></li>';
+                        html += '</ul>';
+                    }
+                    html += '</div>';
+
+                    bootbox.alert(html);
+
+                    $('.calZ .btn').click(function () {
+                        calZDel($(this));
+                    });
+                });
+    });
+
+    function calZDel(obj) {
+        name = obj.parent('li').text();
+
+        bootbox.confirm("Die Freigabe von/für <b>" + name + "</b> löschen?", function (result) {
+            if (result) {
+                obj.hide();
+                obj.parent('li').css('text-decoration', 'line-through');
+
+                key = obj.parent('li').attr('data-key');
+
+
+                $.post('kalender.php', {f: 'delZCode', key: key})
+                        .done(function (data) {
+                            if (data != '1') {
+                                bootbox.alert('Das Löschen der Freigabe hat leider nicht funktioniert!');
+                                obj.parent('li').css('text-decoration', 'none');
+                                obj.show();
+                            }
+                        });
+            }
+        });
+    }
+}
+
+
+
+function startNewForm() {
+    $('#ganztag').change(function () {
+        if ($('#ganztag').is(':checked')) {
+            $('#vontblock, #bistblock, #vontstunden, #biststunden').hide();
+            $('#vont').data('time', $('#vont').val()).val('00:00');
+            $('#bist').data('time', $('#bist').val()).val('23:59');
+        } else {
+            $('#vontblock, #bistblock, #vontstunden, #biststunden').show();
+            $('#vont').val($('#vont').data('time'));
+            $('#bist').val($('#bist').data('time'));
+        }
+    });
+
+    $('#von').change(function () {
+        if (moment($('#von').val(), 'DD.MM.YYYY').unix() > moment($('#bis').val(), 'DD.MM.YYYY').unix())
+            datebisSet($('#von').val());
+    });
+    $('#bis').change(function () {
+        if (moment($('#bis').val(), 'DD.MM.YYYY').unix() < moment($('#von').val(), 'DD.MM.YYYY').unix())
+            datevonSet($('#bis').val());
+    });
+
+    $('#vont').change(function () {
+        var von = moment($('#von').val() + ' ' + $('#vont').val(), 'DD.MM.YYYY HH:mm');
+        var bis = moment($('#bis').val() + ' ' + $('#bist').val(), 'DD.MM.YYYY HH:mm');
+
+        if (bis.unix() <= von.unix())
+            $('#bist').val(von.add(15, 'm').format('HH:mm'));
+    });
+
+    $('#bist').change(function () {
+        var von = moment($('#von').val() + ' ' + $('#vont').val(), 'DD.MM.YYYY HH:mm');
+        var bis = moment($('#bis').val() + ' ' + $('#bist').val(), 'DD.MM.YYYY HH:mm');
+
+        if (bis.unix() <= von.unix())
+            $('#vont').val(bis.subtract(5, 'm').format('HH:mm'));
+    });
+
+    $('input').focus(function () {
+        focus = $(this);
+    });
+
+    $('input').blur(function () {
+
+    });
+
+    $('#neu #save').click(function () {
+        focus = null;
+        $('#neu form').submit();
+    });
+
+    $(document).keypress(function (e) {
+        //Erlaubt das Drücken von Enter zum Speichern der Uhrzeit
+        if (e.which == 13)
+            if ($('.clockpicker-popover:visible').length >= 1) {
+                if (focus != null) {
+                    focus.val($('.clockpicker-popover:visible .clockpicker-span-hours').text() + ':' + $('.clockpicker-popover:visible .clockpicker-span-minutes').text());
+                    focus.clockpicker('hide');
+                    e.stopImmediatePropagation();
+                    e.stopPropagation();
+                }
+            }
+    });
+
+    $('#neu #zielgruppeNeu').change(function () {
+        var vals = $(this).val();
+
+        if (vals == null || vals.length == 0)
+            return true;
+
+        if (vals.indexOf('-l-' + $('#neu #zielgruppe').attr('data-userid')) >= 0) {
+            var index = vals.indexOf('-l-' + $('#neu #zielgruppe').attr('data-userid'));
+            if (index >= 0)
+                vals.splice(index, 1);
+            vals.push('-me');
+        }
+
+        if (vals.length == 1 && vals.indexOf('-me') >= 0 && $('#neu #id').val().length == 0) {
+            $('#privat').show();
+        } else
+            $('#privat').hide();
+
+        if (vals.indexOf('-sus') >= 0) {
+            $(this).find('optgroup[label="Klassen"] option, optgroup[label="Jahrgangsstufen"] option').each(function () {
+                var index = vals.indexOf($(this).attr('value'));
+                if (index >= 0)
+                    vals.splice(index, 1);
+            });
+        }
+
+        if (vals.indexOf('-lul') >= 0) {
+            $(this).find('optgroup[label="Lehrkräfte"] option').each(function () {
+                var index = vals.indexOf($(this).attr('value'));
+                if (index >= 0)
+                    vals.splice(index, 1);
+            });
+            var index = vals.indexOf('-me');
+            if (index >= 0)
+                vals.splice(index, 1);
+        }
+
+        $(this).val(vals);
+
+        $(this).trigger("change.select2");
+    });
+
+    $('#neu #break').click(function () {
+        $('#neu form')[0].reset();
+        $('#neu').hide();
+        $('#calendarrow').show();
+        $('#calender .fc-view-container').show();
+    });
+
+    $('#neu form').submit(function () {
+        if (focus != null)
+            return false;
+
+        if ($('#neu #zielgruppeNeu').val() == null) {
+            alert('Bitte eine Zielgruppe auswählen!');
+            return false;
+        }
+
+        if ($('#beschreibung2').length > 0 && $('#beschreibung2').val() != '' && $('#zielgruppeNeu2').val() == null) {
+            alert('Da der zweite Beschreibungstext nicht leer ist, muss auch eine zweite Zielgruppe ausgewählt werden!');
+            return false;
+        }
+
+        var data = $('#neu form').serialize() + "&f=add";
+
+        $.post("kalender.php", data)
+                .done(function (data) {
+                    data = JSON.parse(data);
+                    if (data.error == 0 || data.error == 1) {
+                        if (typeof data.multi_errors !== "undefined") {
+                            if (data.multi_errors.length == 0)
+                                bootbox.alert(data.multi_success + ' Wiederholungen erfolgreich angelegt!');
+                            else
+                                bootbox.alert(data.multi_success + ' Wiederholungen erfolgreich angelegt!<br /><br />Fehler beim Anlegen von<ul><li>' + data.multi_errors.join('</li><li>') + '</li></ul>');
+                        }
+
+                        $('#calendarrow').show();
+                        $('#calender').fullCalendar('gotoDate', $.fullCalendar.moment($('#neu #von').val(), "DD.MM.YYYY"));
+
+                        if ($('#neu #id').val() == '') {
+                            $('#calender').fullCalendar("refetchEvents");
+                        } else
+                            $('#calender').fullCalendar("refetchEvents");
+
+                        $('#neu form')[0].reset();
+                        $('#ganztag').change();
+                        $('#verantwortlich').change().trigger('chosen:updated');
+                        $('#neu').hide();
+                        $('#calender .fc-view-container').show();
+
+
+
+                        if (data.error == 1)
+                            bootbox.alert("Der Termin wurde gespeichert. Bevor der Termin angezeigt wird, muss er noch von einem Tooladmin bestätigt werden.");
+                    } else if (data.error == -2) {
+                        alert('Das Enddatum liegt früher als der Beginn oder ist gleich mit diesem! Der Termin kann nicht gespeichert werden.');
+                    } else
+                        alert('Leider ist ein Fehler aufgetreten!');
+                });
+        return false;
+    });
+}
+
+function newFormShow(start, end) {
+    var bb = $('#neu');
+    bb.find('#optsbtn').show();
+    bb.find('#opts').show();
+    bb.show();
+    datevonSet(start.format('L'));
+    bb.find('#vont').clockpicker().val('11:00');
+    datevonSet(end.subtract(1, 'minutes').format('L'));
+    bb.find('#bist').clockpicker().val('12:00');
+    bb.find('.modal-body .bootbox-body').append($('#neu'));
+    bb.find(".chosen-select").chosen({no_results_text: "Leider kein Ergebnis!"});
+    bb.find("legend").html("Neuer Eintrag");
+    bb.find("#id").val('');
+
+    if ($('#zielgruppeNeu').hasClass("select2-hidden-accessible")) {
+        $('#zielgruppeNeu').select2('destroy').val('');
+    }
+    if ($('#zielgruppeNeu2').hasClass("select2-hidden-accessible")) {
+        $('#zielgruppeNeu2').select2('destroy').val('');
+    }
+
+    $('#zielgruppeNeu option, #zielgruppeNeu2 option').remove();
+    $('#zielgruppeNeu, #zielgruppeNeu2').val('').trigger('change');
+
+    $("#zielgruppeNeu, #zielgruppeNeu2").select2({
+        language: "de",
+        ajax: {
+            url: "kalender.php",
+            dataType: 'json',
+            delay: 250,
+            data: function (params) {
+                return {
+                    q: params.term,
+                    page: params.page || 1,
+                    a: "searchRecipt"
+                };
+            },
+            processResults: function (data, params) {
+                params.page = params.page || 1;
+                return {
+                    results: data.items,
+                    pagination: {
+                        more: (params.page * 30) < data.total_count
+                    }
+                };
+            },
+            cache: true
+        },
+        escapeMarkup: function (markup) {
+            return markup;
+        }, // let our custom formatter work
+        minimumInputLength: 0,
+        templateSelection: function (item) {
+            return item.element.title;
+        }
+
+    });
+
+    bb.find('#opts').hide();
+
+    bb.find('#titel').focus();
+}

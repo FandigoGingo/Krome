@@ -1,0 +1,13 @@
+@CHARSET "UTF-8";
+
+.logobr {
+	display: none;
+}
+
+.fc-basicWeek-view .fc-content .logobr {
+    display: block;
+}
+
+.fc-basicWeek-view .fc-day-grid-event > .fc-content {
+	white-space: pre-line;
+}
